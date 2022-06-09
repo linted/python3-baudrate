@@ -123,6 +123,7 @@ class Baudrate:
 
     def __enter__(self):
         self.Open()
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         # ignore the exception info, let it bubble up
