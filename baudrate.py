@@ -14,8 +14,6 @@ import termios
 import time
 import tty
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
-from getopt import GetoptError
-from getopt import getopt as GetOpt
 from threading import Thread
 
 import getch
@@ -314,8 +312,6 @@ if __name__ == '__main__':
                         subprocess.call(["minicom", name])
                 else:
                     print(config)
-            except KeyboardInterrupt:
-                pass
             except Exception as e:
                 print(f"Exception: {e}")
 
