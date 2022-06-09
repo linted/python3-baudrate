@@ -8,15 +8,19 @@
 #           pip install -r requirements.txt
 #           sudo python baudrate.py /dev/ttyUSB0
 
-import sys
-import time
-import serial
-from threading import Thread
-import tty
-import termios
 import subprocess
-from getopt import getopt as GetOpt, GetoptError
+import sys
+import termios
+import time
+import tty
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from getopt import GetoptError
+from getopt import getopt as GetOpt
+from threading import Thread
+
 import getch
+import serial
+
 
 class RawInput:
     """Gets a single character from standard input.  Does not echo to the screen."""
@@ -109,23 +113,22 @@ class Baudrate:
         self._gen_char_list()
 
     def _gen_char_list(self):
-        c = ' '
-
-        while c <= '~':
-            self.valid_characters.append(c)
-            c = chr(ord(c) + 1)
-
-        for c in self.WHITESPACE:
-            if c not in self.valid_characters:
-                self.valid_characters.append(c)
+        self.valid_characters = [chr(x) for x in range(ord("!"), ord("~")+1)]
+        self.valid_characters.extend(self.WHITESPACE)
 
     def _print(self, data):
         if self.verbose:
             sys.stderr.buffer.write(data)
             sys.stderr.buffer.flush()
 
+    def __enter__(self):
+        self.Open()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # ignore the exception info, let it bubble up
+        self.Close()
+
     def Open(self):
-        pass
         self.serial = serial.Serial(self.port, timeout=self.timeout)
         self.NextBaudrate(0)
 
@@ -243,113 +246,77 @@ class Baudrate:
         self.ctlc = True
         self.serial.close()
 
-
-
 if __name__ == '__main__':
 
-
-    def usage():
-        baud = Baudrate()
-
-        print("Baudrate v%s" % baud.VERSION)
-        print("Craig Heffner, http://www.devttys0.com")
-        print("@Loris1123, https://github.com/Loris1123")
-        print("Sick.Codes, https://sick.codes")
-        print("")
-        print("Usage: %s [OPTIONS]" % sys.argv[0])
-        print("")
-        print("\t-p <serial port>   Specify the serial port to use [/dev/ttyUSB0]")
-        print("\t-t <seconds>       Set the timeout period used when switching baudrates in auto detect mode [%d]" % baud.READ_TIMEOUT)
-        print("\t-c <num>           Set the minimum ASCII character threshold used during auto detect mode [%d]" % baud.MIN_CHAR_COUNT)
-        print("\t-n <name>          Save the resulting serial configuration as <name> and automatically invoke minicom (implies -a)")
-        print("\t-a                 Enable auto detect mode")
-        print("\t-b                 Display supported baud rates and exit")
-        print("\t-q                 Do not display data read from the serial port")
-        print("\t-h                 Display help")
-        print("")
-        sys.exit(1)
-
     def main():
-        display = False
-        verbose = True
-        auto = False
+        parser = ArgumentParser(
+            formatter_class=RawDescriptionHelpFormatter,
+            description=
+            f"Baudrate v{Baudrate.VERSION}\n"
+            "Craig Heffner, http://www.devttys0.com\n"
+            "@Loris1123, https://github.com/Loris1123\n"
+            "Sick.Codes, https://sick.codes\n"
+        )
+        parser.add_argument("-p", "--port", help="Specify the serial port to use", default="/dev/ttyUSB0")
+        parser.add_argument("-t", "--timeout", help="Set the timeout period used when switching baudrates in auto detect mode", default=Baudrate.READ_TIMEOUT)
+        parser.add_argument("-c", "--count", help="Set the minimum ASCII character threshold used during auto detect mode", default=Baudrate.MIN_CHAR_COUNT, type=int)
+        parser.add_argument("-n", "--name", help="Save the resulting serial configuration as <name> and automatically invoke minicom (implies -a)", action="store")
+        parser.add_argument("-a", "--auto", help="Enable auto detect mode", action="store_true")
+        parser.add_argument("-b", "--baud-rates", help="Display supported baud rates and exit", action="store_true")
+        parser.add_argument("-q", "--quiet", help="Do not display data read from the serial port", action="store_false")
+
+        args = parser.parse_args()
+
+        if args.baud_rates:
+            print("Supported baud rates:")
+            for rate in Baudrate.BAUDRATES:
+                print(f"{rate}\n")
+            print("")
+            return
+
+        port = args.port
+        timeout = args.timeout
+        threshold = args.count
+        name = args.name
+        auto = args.auto
+        verbose = args.quiet
         run = False
-        threshold = 25
-        timeout = 1
-        name = None
-        port = '/dev/ttyUSB0'
 
-        try:
-            (opts, args) = GetOpt(sys.argv[1:], 'p:t:c:n:abqh')
-        except GetoptError as e:
-            print(e)
-            usage()
+        if name != None:
+            run = True
+            auto = True
 
-        for opt, arg in opts:
-            if opt == '-t':
-                timeout = int(arg)
-            elif opt == '-c':
-                threshold = int(arg)
-            elif opt == '-p':
-                port = arg
-            elif opt == '-n':
-                name = arg
-                auto = True
-                run = True
-            elif opt == '-a':
-                auto = True
-            elif opt == '-b':
-                display = True
-            elif opt == '-q':
-                verbose = False
-            else:
-                usage()
-
-        baud = Baudrate(port, threshold=threshold, timeout=timeout, name=name, verbose=verbose, auto=auto)
-
-        if display:
-            print("")
-            for rate in baud.BAUDRATES:
-                print("\t{}".format(rate))
-            print("")
-        else:
-            print("")
-            print("Starting baudrate detection on %s, turn on your serial device now." % port)
-            print("Press Up/Down to switch baudrates.")
-            print("Press Ctl+C to quit.")
-            print("")
-
-            baud.Open()
+        with Baudrate(port, threshold=threshold, timeout=timeout, name=name, verbose=verbose, auto=auto) as baud:
+            print(f"\nStarting baudrate detection on {port}, turn on your serial device now.\n"
+                "Press Up/Down to switch baud rates.\n"
+                "Press Ctl+C to quit.\n")
 
             try:
                 rate = baud.Detect()
-                print("\nDetected baudrate: {}".format(rate))
+                print(f"\nDetected baudrate: {rate}")
 
                 if name is None:
                     print("\nSave minicom configuration as: ", end=" ")
                     name = sys.stdin.readline().strip()
                     print("")
 
-                (ok, config) = baud.MinicomConfig(name)
-                if name and name is not None:
-                    if ok:
-                        if not run:
-                            print("Configuration saved. Run minicom now [n/Y]? ", end=" ")
-                            yn = sys.stdin.readline().strip()
-                            print("")
-                            if yn == "" or yn.lower().startswith('y'):
-                                run = True
+                ok, config = baud.MinicomConfig(name)
+                if name and name is not None and ok:
+                    if not run:
+                        print("Configuration saved. Run minicom now [n/Y]? ", end="")
+                        yn = sys.stdin.readline().strip()
+                        print("")
+                        if yn == "" or yn.lower().startswith('y'):
+                            run = True
 
-                        if run:
-                            subprocess.call(["minicom", name])
-                    else:
-                        print(config)
+                    if run:
+                        subprocess.call(["minicom", name])
                 else:
                     print(config)
             except KeyboardInterrupt:
                 pass
-
-            baud.Close()
+            except Exception as e:
+                print(f"Exception: {e}")
 
     main()
 
