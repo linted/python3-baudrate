@@ -15,6 +15,7 @@ import time
 import tty
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from threading import Thread
+from platform import system
 
 import getch
 import serial
@@ -23,9 +24,9 @@ import serial
 class RawInput:
     """Gets a single character from standard input.  Does not echo to the screen."""
     def __init__(self):
-        try:
+        if system() == "Windows":
             self.impl = RawInputWindows()
-        except ImportError:
+        else:
             self.impl = RawInputUnix()
 
     def __call__(self): return self.impl()
